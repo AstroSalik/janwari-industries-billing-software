@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── CSS Variables: Industrial Precision Theme ──────── */
+:root {
+  --color-bg:          #F8FAFC; /* Slate 50 - Light Serene */
+  --color-surface:     #FFFFFF; /* White */
+  --color-surface-alt: #F1F5F9; /* Slate 100 */
+  --color-border:      #E2E8F0; /* Slate 200 */
+  --color-border-hover:#CBD5E1; /* Slate 300 */
+  --color-amber:       #D97706; /* Amber 600 */
+  --color-amber-dark:  #B45309; /* Amber 700 */
+  --color-amber-dim:   #92400E; /* Amber 800 */
+  --color-amber-glow:  rgba(217, 119, 6, 0.08);
+  --color-amber-border:rgba(217, 119, 6, 0.2);
+  --color-green:       #059669; /* Emerald 600 */
+  --color-red:         #DC2626; /* Red 600 */
+  --color-blue:        #2563EB; /* Blue 600 */
+  --color-text:        #0F172A; /* Slate 900 */
+  --color-text-muted:  #475569; /* Slate 600 */
+  --color-text-dim:    #94A3B8; /* Slate 400 */
+}
+
+/* ─── Base Styles ────────────────────────────────────── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'IBM Plex Sans', sans-serif;
+  min-height: 100vh;
+}
+
+/* ─── Scrollbar (dark theme) ─────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-hover);
+}
+
+/* ─── Selection ──────────────────────────────────────── */
+::selection {
+  background-color: rgba(245, 158, 11, 0.25);
+  color: #F8FAFC;
+}
+
+/* ─── Focus Ring Override ────────────────────────────── */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.5);
+  border-radius: 4px;
+}

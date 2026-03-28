@@ -1,0 +1,506 @@
+// Janwari Industries Billing Software — Prisma Schema
+// Database: PostgreSQL (Cloud-synchronized via Neon)
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Users & Auth ───────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  username  String   @unique
+  password  String
+  role      Role     @default(CASHIER)
+  isActive  Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  invoices  Invoice[]
+  challans  DeliveryChallan[]
+  accountTransactions AccountTransaction[]
+  auditLogs AuditLog[]
+}
+
+enum Role {
+  ADMIN
+  CASHIER
+}
+
+// ─── Products & Inventory ───────────────────────────
+
+model Category {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  products Product[]
+}
+
+model Product {
+  id                    String          @id @default(cuid())
+  name                  String
+  brand                 String?
+  sku                   String?         @unique
+  hsnCode               String
+  gstRate               Float           // 5, 12, 18, or 28
+  mrp                   Float
+  costPrice             Float?
+  unit                  String          @default("pcs")
+  isBattery             Boolean         @default(false)
+  voltage               Float?
+  ahRating              Float?
+  polarity              String?         // L / R / Universal
+  warrantyFreeMonths    Int?
+  warrantyProRataMonths Int?
+  categoryId            String
+  category              Category        @relation(fields: [categoryId], references: [id])
+  stock                 Stock[]
+  invoiceItems          InvoiceItem[]
+  purchaseItems         PurchaseItem[]
+  serialNumbers         SerialNumber[]
+  compatibility         VehicleCompat[]
+  challanItems          ChallanItem[]
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+}
+
+model Location {
+  id    String  @id @default(cuid())
+  name  String  @unique // "Shop Floor", "Godown", "Vehicle"
+  stock Stock[]
+}
+
+model Stock {
+  id         String   @id @default(cuid())
+  productId  String
+  locationId String
+  quantity   Int      @default(0)
+  lowStockAt Int      @default(5)
+  product    Product  @relation(fields: [productId], references: [id])
+  location   Location @relation(fields: [locationId], references: [id])
+  updatedAt  DateTime @updatedAt
+
+  @@unique([productId, locationId])
+}
+
+model SerialNumber {
+  id          String       @id @default(cuid())
+  serial      String       @unique
+  productId   String
+  product     Product      @relation(fields: [productId], references: [id])
+  status      SerialStatus @default(IN_STOCK)
+  invoiceItem InvoiceItem?
+  graveyard   BatteryGraveyard?
+  challanItems ChallanItem[]
+  createdAt   DateTime     @default(now())
+}
+
+enum SerialStatus {
+  IN_STOCK
+  SOLD
+  EXCHANGED
+  SCRAPPED
+}
+
+// ─── Vehicles & Compatibility ───────────────────────
+
+model Vehicle {
+  id         String    @id @default(cuid())
+  regNumber  String    @unique
+  make       String?
+  model      String?
+  year       Int?
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  invoices   Invoice[]
+}
+
+model VehicleCompat {
+  id        String  @id @default(cuid())
+  productId String
+  make      String
+  model     String
+  yearFrom  Int?
+  yearTo    Int?
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@unique([productId, make, model])
+}
+
+// ─── Customers ──────────────────────────────────────
+
+model Customer {
+  id           String       @id @default(cuid())
+  name         String
+  phone        String       @unique
+  address      String?
+  gstin        String?
+  stateCode    String       @default("01") // J&K = 01
+  type         CustomerType @default(RETAIL)
+  creditLimit  Float        @default(0)
+  vehicles         Vehicle[]
+  invoices         Invoice[]
+  khataEntries     KhataEntry[]
+  deliveryChallans DeliveryChallan[]
+  createdAt        DateTime          @default(now())
+}
+
+enum CustomerType {
+  RETAIL
+  FLEET
+  MECHANIC
+}
+
+// ─── Mechanics ──────────────────────────────────────
+
+model Mechanic {
+  id             String               @id @default(cuid())
+  name           String
+  phone          String               @unique
+  commissionRate Float                @default(0)
+  invoices       Invoice[]
+  settlements    MechanicSettlement[]
+  createdAt      DateTime             @default(now())
+}
+
+// ─── Invoices ───────────────────────────────────────
+
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  type          InvoiceType   @default(TAX_INVOICE)
+  status        InvoiceStatus @default(DRAFT)
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  vehicleId     String?
+  vehicle       Vehicle?      @relation(fields: [vehicleId], references: [id])
+  mechanicId    String?
+  mechanic      Mechanic?     @relation(fields: [mechanicId], references: [id])
+  createdById   String
+  createdBy     User          @relation(fields: [createdById], references: [id])
+  items         InvoiceItem[]
+  payments      Payment[]
+  khataEntries  KhataEntry[]
+  
+  // Credit Note / Return references
+  originalInvoiceId String?
+  originalInvoice   Invoice?    @relation("CreditNoteRef", fields: [originalInvoiceId], references: [id])
+  creditNotes       Invoice[]   @relation("CreditNoteRef")
+  returnReason      String?
+  
+  subtotal      Float
+  totalDiscount Float         @default(0)
+  totalGst      Float
+  grandTotal    Float
+  paidAmount    Float         @default(0)
+  balanceAmount Float         @default(0)
+  notes         String?
+  
+  deliveryChallan DeliveryChallan? // 1-to-1 max
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+enum InvoiceType {
+  TAX_INVOICE
+  QUOTE
+  CREDIT_NOTE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  FINALIZED
+  PAID
+  PARTIAL
+  CANCELLED
+}
+
+model InvoiceItem {
+  id             String        @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice       @relation(fields: [invoiceId], references: [id])
+  productId      String
+  product        Product       @relation(fields: [productId], references: [id])
+  serialNumberId String?       @unique
+  serialNumber   SerialNumber? @relation(fields: [serialNumberId], references: [id])
+  description    String?
+  quantity       Float
+  rate           Float
+  discount       Float         @default(0)
+  gstRate        Float
+  cgst           Float
+  sgst           Float
+  igst           Float
+  lineTotal      Float
+  isExchange     Boolean       @default(false)
+  warranty       WarrantyClaim?
+}
+
+// ─── Payments ───────────────────────────────────────
+
+model Payment {
+  id        String      @id @default(cuid())
+  invoiceId String
+  invoice   Invoice     @relation(fields: [invoiceId], references: [id])
+  mode      PaymentMode
+  amount    Float
+  reference String?     // UPI transaction ID, cheque number
+  createdAt DateTime    @default(now())
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  CHEQUE
+  CREDIT
+}
+
+// ─── Warranty ───────────────────────────────────────
+
+model WarrantyClaim {
+  id            String         @id @default(cuid())
+  invoiceItemId String         @unique
+  invoiceItem   InvoiceItem    @relation(fields: [invoiceItemId], references: [id])
+  claimDate     DateTime       @default(now())
+  status        WarrantyStatus @default(PENDING)
+  claimType     ClaimType
+  proRataAmount Float?
+  notes         String?
+}
+
+enum WarrantyStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SETTLED
+}
+
+enum ClaimType {
+  FREE_REPLACEMENT
+  PRO_RATA
+}
+
+// ─── Battery Graveyard ──────────────────────────────
+
+model BatteryGraveyard {
+  id              String           @id @default(cuid())
+  serialNumberId  String?          @unique
+  serialNumber    SerialNumber?    @relation(fields: [serialNumberId], references: [id])
+  condition       BatteryCondition
+  estimatedWeight Float?           // kg
+  sourceInvoiceNo String?
+  isSettled       Boolean          @default(false)
+  settlement      ScrapSettlement? @relation(fields: [settlementId], references: [id])
+  settlementId    String?
+  createdAt       DateTime         @default(now())
+}
+
+enum BatteryCondition {
+  DEAD
+  DAMAGED
+  REFURBISHABLE
+  GOOD
+}
+
+model ScrapSettlement {
+  id          String             @id @default(cuid())
+  dealerName  String
+  totalWeight Float
+  ratePerKg   Float
+  totalAmount Float
+  settledAt   DateTime           @default(now())
+  batteries   BatteryGraveyard[]
+}
+
+// ─── Khata / Credit Ledger ──────────────────────────
+
+model KhataEntry {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  invoiceId  String?
+  invoice    Invoice? @relation(fields: [invoiceId], references: [id])
+  type       KhataType
+  amount     Float
+  notes      String?
+  createdAt  DateTime @default(now())
+}
+
+enum KhataType {
+  DEBIT   // customer owes money (credit sale)
+  CREDIT  // customer pays (payment received)
+  ADVANCE // customer pays in advance
+}
+
+// ─── Mechanic Settlements ───────────────────────────
+
+model MechanicSettlement {
+  id         String   @id @default(cuid())
+  mechanicId String
+  mechanic   Mechanic @relation(fields: [mechanicId], references: [id])
+  amount     Float
+  periodFrom DateTime
+  periodTo   DateTime
+  notes      String?
+  settledAt  DateTime @default(now())
+}
+
+// ─── Suppliers & Purchases ──────────────────────────
+
+model Supplier {
+  id           String     @id @default(cuid())
+  name         String
+  phone        String?
+  gstin        String?
+  address      String?
+  stateCode    String     @default("01")
+  paymentTerms String?
+  purchases    Purchase[]
+  createdAt    DateTime   @default(now())
+}
+
+model Purchase {
+  id          String         @id @default(cuid())
+  supplierId  String
+  supplier    Supplier       @relation(fields: [supplierId], references: [id])
+  invoiceRef  String?
+  invoiceDate DateTime?
+  items       PurchaseItem[]
+  totalAmount Float
+  isPaid      Boolean        @default(false)
+  paymentMode PaymentMode?
+  reference   String?
+  createdAt   DateTime       @default(now())
+}
+
+model PurchaseItem {
+  id         String   @id @default(cuid())
+  purchaseId String
+  purchase   Purchase @relation(fields: [purchaseId], references: [id])
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Int
+  rate       Float
+  gstRate    Float
+  lineTotal  Float
+}
+
+// ─── Petty Cash ─────────────────────────────────────
+
+model PettyCash {
+  id          String        @id @default(cuid())
+  category    PettyCategory
+  description String
+  amount      Float
+  date        DateTime      @default(now())
+  paymentMode PaymentMode   @default(CASH)
+  reference   String?
+}
+
+enum PettyCategory {
+  TRANSPORT
+  MEALS
+  STATIONERY
+  MAINTENANCE
+  STAFF
+  OTHER
+}
+
+// ─── Delivery Challans ─────────────────────────────
+
+model DeliveryChallan {
+  id              String          @id @default(cuid())
+  challanNumber   String          @unique  // DC/2025-26/0001
+  customerId      String?
+  customer        Customer?       @relation(fields: [customerId], references: [id])
+  vehicleId       String?
+  status          ChallanStatus   @default(PENDING)
+  showAmount      Boolean         @default(false)
+  items           ChallanItem[]
+  invoiceId       String?         @unique
+  invoice         Invoice?        @relation(fields: [invoiceId], references: [id])
+  notes           String?
+  deliveredAt     DateTime?
+  createdBy       User            @relation(fields: [createdById], references: [id])
+  createdById     String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+enum ChallanStatus {
+  PENDING
+  DELIVERED
+  INVOICED
+  RETURNED
+  CANCELLED
+}
+
+model ChallanItem {
+  id             String          @id @default(cuid())
+  challanId      String
+  challan        DeliveryChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product         @relation(fields: [productId], references: [id])
+  serialNumberId String?         // Intentionally NOT @unique to avoid 1-to-1 conflict with InvoiceItem
+  serialNumber   SerialNumber?   @relation(fields: [serialNumberId], references: [id])
+  quantity       Float
+  rate           Float?          // Optional, shown if showAmount is true
+  discount       Float           @default(0)
+  gstRate        Float           @default(0)
+}
+
+// ─── Cash & Bank Accounts ───────────────────────────
+
+model CashBankAccount {
+  id          String          @id @default(cuid())
+  name        String          @unique // e.g., "Cash Drawer", "SBI Current", "PhonePe"
+  type        AccountType
+  balance     Float           @default(0)
+  accountNo   String?
+  ifsc        String?
+  transactions AccountTransaction[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+enum AccountType {
+  CASH
+  BANK
+  WALLET
+}
+
+model AccountTransaction {
+  id          String          @id @default(cuid())
+  accountId   String
+  account     CashBankAccount @relation(fields: [accountId], references: [id])
+  type        AccountTxnType
+  amount      Float
+  reference   String?         // UPI ID or Cheque No
+  notes       String?
+  invoiceId   String?
+  createdById String?
+  createdBy   User?           @relation(fields: [createdById], references: [id])
+  date        DateTime        @default(now())
+}
+
+enum AccountTxnType {
+  DEBIT  // Money going out
+  CREDIT // Money coming in
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String   // e.g. "INVOICE_CANCELLED", "PRICE_OVERRIDE"
+  entityId  String?  // ID of the related object
+  details   String?  // JSON string of changes
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
