@@ -7,7 +7,7 @@
     "start": "electron electron/main.js",
     "prepare:runtime-config": "node scripts/prepare-runtime-config.cjs",
     "build:client": "npm run build --prefix client",
-    "build:server": "npm run build --prefix server",
+    "build:server": "npm run db:generate --prefix server && npm run build --prefix server",
     "build": "npm run prepare:runtime-config && npm run build:client && npm run build:server",
     "package": "npm run build && electron-builder",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -24,6 +24,7 @@
       "client/dist/**/*",
       "server/dist/**/*",
       "server/node_modules/**/*",
+      "server/node_modules/.prisma/**/*",
       "server/package.json",
       "shared/**/*",
       "node_modules/**/*",
@@ -40,12 +41,17 @@
     "asar": true,
     "asarUnpack": [
       "server/node_modules/**/*",
+      "server/node_modules/.prisma/**/*",
       "node_modules/.prisma/**/*"
     ],
     "extraResources": [
       {
         "from": "node_modules/.prisma",
         "to": "app/node_modules/.prisma"
+      },
+      {
+        "from": "server/node_modules/.prisma",
+        "to": "app/server/node_modules/.prisma"
       }
     ]
   },
